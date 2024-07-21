@@ -2,25 +2,75 @@
 title: "Two Parameters"
 author: "Annika"
 format: html
+execute:
+  echo: false
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
 ```{r}
-1 + 1
+#| message: FALSE
+
+library(tidyverse)
+library(primer.data)
+library(brms)
+library(tidybayes)
+library(gtsummary)
 ```
 
-You can add options to executable code like this 
-
 ```{r}
-#| echo: false
-2 * 2
+nhanes |>
+filter(sex == "Male", age >= 18) |>
+select(height) |>
+drop_na() |>
+ggplot(aes(x = height)) +
+geom_histogram(bins = 50) + 
+labs(
+title = "Male Adult Height in the US in 2010",
+x = "Height (cm)",
+y = "Count",
+caption = "Source: National Health and Nutrition Examination Survey"
+)
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+Using data from the National Health and Nutrition Examination Survey conducted from 2009 to 2011, we seek to create a model of height for adult men. In particular, what is the average height of an adult male in America in 2024? Since participation in the survey is voluntary, it could mean that, for example, taller men are more likely to answer this question. We modeled height using an intercept-only regression.
+
+```{r}
+#| cache: TRUE
+
+fit_male_height <- brm(formula = height ~ 1, data = nhanes, family = gaussian(), silent = 2, refresh = 0, seed = 12)
+
+
+```
+
+```{r}
+tbl_regression(fit_male_height, intercept = TRUE)
+
+```
+
+
+```{r}
+#| label: plot
+
+ndata <- tibble(.rows = 1)
+
+fit_male_height |>
+add_predicted_draws(newdata = ndata) |>
+ggplot(aes(x = .prediction)) + 
+geom_histogram(aes(y = after_stat(count / sum(count))), bins = 100) + 
+labs(
+title = "Posterior for Max Height Difference Among Four Men",
+subtitle = "The expected value for this difference would be much more narrow",
+x = "Height difference in centimeters",
+y = "Probability",
+caption = "Data source: NHANES"
+) + 
+scale_x_continuous(labels = scales::number_format()) + 
+scale_y_continuous(labels = scales::percent_format(accuracy = 1))
+```
+
+```{r}
+fit_male_height |>
+add_predicted_draws(newdata = ndata) |>
+mutate(tall = if_else(.prediction > 180, TRUE, FALSE)) |>
+summarize(odds = mean(tall))
+```
+
